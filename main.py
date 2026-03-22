@@ -12,7 +12,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN)
 
 DATA_FILE = "alerts.json"
-USERS_PREMIUM = "premium_users.json"  # Pour tracker les premiums (simple JSON)
+USERS_PREMIUM = "premium_users.json"
 
 def load_data(file):
     if os.path.exists(file):
@@ -25,7 +25,7 @@ def save_data(data, file):
         json.dump(data, f, indent=4)
 
 alerts = load_data(DATA_FILE)
-premium_users = load_data(USERS_PREMIUM)  # {user_id: expiration_timestamp}
+premium_users = load_data(USERS_PREMIUM)
 
 price_cache = {}
 
@@ -110,15 +110,19 @@ def delete(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy_premium")
 def buy_premium(call):
-    prices = [types.LabeledPrice(label="Premium 1 mois", amount=500)]  # 500 Stars ≈ 5-7 USD
+    # Petit feedback immédiat pour confirmer que le clic arrive
+    bot.answer_callback_query(call.id, text="Ouverture de la facture Premium...", show_alert=False)
+
+    prices = [types.LabeledPrice(label="Premium 1 mois", amount=500)]
+
     bot.send_invoice(
         chat_id=call.message.chat.id,
         title="Premium CryptoAlert",
         description="Alertes illimitées + priorité (30 jours)",
         payload="premium_1month",
-        provider_token="",          # VIDE pour Stars
         currency="XTR",
         prices=prices,
+        # PAS de provider_token ici → c'est obligatoire de l'omettre pour Stars (XTR)
         need_name=False,
         need_phone_number=False,
         need_email=False,
@@ -134,7 +138,7 @@ def got_payment(message):
     user_id = message.from_user.id
     payload = message.successful_payment.invoice_payload
     if payload == "premium_1month":
-        expiration = int(time.time()) + 30 * 24 * 3600  # +30 jours
+        expiration = int(time.time()) + 30 * 24 * 3600
         premium_users[user_id] = expiration
         save_data(premium_users, USERS_PREMIUM)
         bot.send_message(message.chat.id, "✅ Premium activé pour 30 jours ! Alertes illimitées activées 🚀")
