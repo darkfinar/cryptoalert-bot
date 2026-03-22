@@ -58,7 +58,7 @@ scheduler.start()
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "Bienvenue sur CryptoAlertBot !\n/setalert bitcoin 65000 above\n/myalerts\n/premium pour illimité")
+    bot.reply_to(message, "Bienvenue ! /setalert bitcoin 65000 above\n/myalerts\n/premium")
 
 @bot.message_handler(commands=["setalert"])
 def set_alert(message):
@@ -69,60 +69,47 @@ def set_alert(message):
         if direction not in ["above", "below"]:
             raise ValueError
 
-        user_id = message.from_user.id
-        if str(user_id) not in alerts:
-            alerts[str(user_id)] = []
+        user_id = str(message.from_user.id)
+        if user_id not in alerts:
+            alerts[user_id] = []
 
-        is_premium = user_id in premium_users and premium_users[user_id] > time.time()
+        is_premium = int(message.from_user.id) in premium_users and premium_users[int(message.from_user.id)] > time.time()
 
-        if len(alerts[str(user_id)]) >= 3 and not is_premium:
+        if len(alerts[user_id]) >= 3 and not is_premium:
             markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("Passer Premium ⭐", callback_data="buy_premium"))
-            bot.reply_to(message, "Limite gratuite : 3 alertes.\nAchète Premium pour illimité !", reply_markup=markup)
+            markup.add(types.InlineKeyboardButton("Passer Premium ⭐ (500 Stars)", callback_data="buy_premium"))
+            bot.reply_to(message, "Limite gratuite atteinte (3 alertes).", reply_markup=markup)
             return
 
-        new_id = len(alerts[str(user_id)]) + 1
-        alerts[str(user_id)].append({"id": new_id, "coin": coin.lower(), "price": price, "direction": direction})
+        new_id = len(alerts[user_id]) + 1
+        alerts[user_id].append({"id": new_id, "coin": coin.lower(), "price": price, "direction": direction})
         save_data(alerts, DATA_FILE)
-        bot.reply_to(message, f"Alerte #{new_id} créée : {coin.upper()} {direction} {price}$")
-    except Exception as e:
-        bot.reply_to(message, "Format invalide.\nEx: /setalert bitcoin 65000 above")
+        bot.reply_to(message, f"Alerte #{new_id} créée.")
+    except:
+        bot.reply_to(message, "Exemple : /setalert bitcoin 65000 above")
 
 @bot.message_handler(commands=["myalerts"])
 def my_alerts(message):
     user_id = str(message.from_user.id)
     if user_id not in alerts or not alerts[user_id]:
-        bot.reply_to(message, "Aucune alerte active.")
+        bot.reply_to(message, "Aucune alerte.")
         return
-    text = "Tes alertes :\n" + "\n".join([f"#{a['id']} - {a['coin'].upper()} {a['direction']} {a['price']}$" for a in alerts[user_id]])
+    text = "Alertes :\n" + "\n".join(f"#{a['id']} - {a['coin'].upper()} {a['direction']} {a['price']}$" for a in alerts[user_id])
     bot.reply_to(message, text)
-
-@bot.message_handler(commands=["delete"])
-def delete(message):
-    try:
-        _, alert_id = message.text.split()
-        user_id = str(message.from_user.id)
-        alerts[user_id] = [a for a in alerts[user_id] if str(a["id"]) != alert_id]
-        save_data(alerts, DATA_FILE)
-        bot.reply_to(message, f"Alerte {alert_id} supprimée.")
-    except:
-        bot.reply_to(message, "Utilise /delete NUMERO")
 
 @bot.callback_query_handler(func=lambda call: call.data == "buy_premium")
 def buy_premium(call):
-    # Petit feedback immédiat pour confirmer que le clic arrive
-    bot.answer_callback_query(call.id, text="Ouverture de la facture Premium...", show_alert=False)
+    bot.answer_callback_query(call.id, text="Ouverture facture 500 Stars...", show_alert=False)
 
-    prices = [types.LabeledPrice(label="Premium 1 mois", amount=500)]
+    prices = [types.LabeledPrice(label="Premium 30 jours", amount=500)]
 
     bot.send_invoice(
         chat_id=call.message.chat.id,
-        title="Premium CryptoAlert",
-        description="Alertes illimitées + priorité (30 jours)",
-        payload="premium_1month",
+        title="Premium CryptoAlertBot",
+        description="Alertes illimitées + priorité",
+        payload="premium_month_v1",
         currency="XTR",
         prices=prices,
-        # PAS de provider_token ici → c'est obligatoire de l'omettre pour Stars (XTR)
         need_name=False,
         need_phone_number=False,
         need_email=False,
@@ -131,32 +118,32 @@ def buy_premium(call):
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(query):
-    bot.answer_pre_checkout_query(pre_checkout_query_id=query.id, ok=True)
+    bot.answer_pre_checkout_query(query.id, ok=True, error_message=None)
 
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
     user_id = message.from_user.id
     payload = message.successful_payment.invoice_payload
-    if payload == "premium_1month":
-        expiration = int(time.time()) + 30 * 24 * 3600
+    if "premium_month" in payload:
+        expiration = int(time.time()) + 30 * 86400
         premium_users[user_id] = expiration
         save_data(premium_users, USERS_PREMIUM)
-        bot.send_message(message.chat.id, "✅ Premium activé pour 30 jours ! Alertes illimitées activées 🚀")
+        bot.send_message(message.chat.id, "✅ Premium activé 30 jours ! 🚀")
     else:
-        bot.send_message(message.chat.id, "Paiement reçu, merci !")
+        bot.send_message(message.chat.id, "Paiement OK, merci.")
 
 @app.route('/', methods=['GET', 'POST'])
-def webhook():
+def index():
     if request.method == 'POST':
         json_string = request.get_data().decode('utf-8')
         update = types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return ''
-    return "Bot live"
+    return "OK"
 
 def run_bot():
     bot.remove_webhook()
-    bot.infinity_polling()
+    bot.infinity_polling(allowed_updates=types.Update.ALL_TYPES)
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
